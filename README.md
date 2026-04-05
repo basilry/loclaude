@@ -19,7 +19,7 @@
 local-claude/
 ├── core/
 │   ├── types.py          # Message, ToolCall, StreamEvent, Permission 등
-│   ├── engine.py         # MLX LM Server API 래퍼 (스트리밍 + 동기)
+│   ├── engine.py         # MLXEngine — OpenAI 호환 API 래퍼 (SSE 스트리밍 + 동기)
 │   ├── runtime.py        # ConversationRuntime (에이전트 루프)
 │   ├── session.py        # JSONL 세션 관리
 │   ├── hooks.py          # Pre/Post tool use hook 시스템
@@ -43,7 +43,8 @@ local-claude/
 
 - Python 3.11+
 - Apple Silicon Mac (M1/M2/M3/M4)
-- 16GB+ RAM (27B-4bit 모델 기준 ~14GB VRAM)
+- 24GB+ Unified Memory (모델 ~14GB + KV 캐시)
+- 권장: 36GB+ (긴 컨텍스트 추론 여유)
 
 ## 설치 및 실행
 
@@ -52,28 +53,52 @@ local-claude/
 pip install -r requirements.txt
 pip install mlx-lm
 
-# 2. MLX 서버 시작
-mlx_lm.server --model mlx-community/Qwen3.5-27B-4bit --port 8080
+# 2. MLX 서버 시작 (최초 실행 시 ~14GB 모델 자동 다운로드)
+mlx_lm.server \
+  --model BeastCode/Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit \
+  --port 8080
 
-# 3. 모델 검증
+# 3. 다른 터미널에서 모델 검증
 python verify_model.py
 
 # 4. CLI 실행
 python __main__.py
+```
 
-# 옵션
+### CLI 옵션
+
+```bash
 python __main__.py -p "파이보나치 함수 만들어줘"          # 원샷 모드
 python __main__.py -w /path/to/project                    # 워크스페이스 지정
 python __main__.py --permission read-only                 # 읽기 전용 모드
 python __main__.py --temperature 0.3 --max-tokens 8192    # 파라미터 조정
+python __main__.py --server-url http://localhost:8080      # MLX 서버 주소 (기본값)
+python __main__.py -m "다른-모델-이름"                     # 모델 오버라이드
 ```
 
-## 모델 옵션
+### MLX 서버가 안 뜰 때
 
-| 모델 | 크기 | 권장 RAM |
-|------|------|---------|
-| Qwen3.5-27B-4bit | ~14GB | 36GB (권장) |
-| Qwen3.5-27B-3bit | ~11GB | 16GB |
+```bash
+# mlx-lm 버전 확인 (0.30+ 권장)
+python -m mlx_lm.version
+
+# 메모리 부족 시 3bit 모델 사용
+mlx_lm.server \
+  --model mlx-community/Qwen3.5-27B-3bit \
+  --port 8080
+```
+
+## 모델
+
+**기본 모델:** `BeastCode/Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit`
+
+Claude 4.6 Opus의 reasoning trajectory로 증류된 Qwen3.5-27B. `<think>` CoT 추론 내장.
+
+| 모델 | 크기 | 권장 RAM | 비고 |
+|------|------|---------|------|
+| BeastCode/...MLX-4bit | ~14GB | 24GB+ | **기본값**. 속도/품질 균형 |
+| mlx-community/Qwen3.5-27B-4bit | ~14GB | 24GB+ | Claude 증류 없는 기본 Qwen3.5 |
+| mlx-community/Qwen3.5-27B-3bit | ~11GB | 16GB+ | 최소 메모리용, 품질 저하 |
 
 ## Slash Commands
 

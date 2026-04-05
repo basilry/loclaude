@@ -291,7 +291,7 @@ def main():
     )
     parser.add_argument("-p", "--prompt", help="One-shot prompt (non-interactive)")
     parser.add_argument("-w", "--workspace", default=".", help="Working directory")
-    parser.add_argument("-m", "--model", help="Ollama model name override")
+    parser.add_argument("-m", "--model", help="MLX model name override")
     parser.add_argument("--server-url", default="http://localhost:8080", help="MLX LM Server URL")
     parser.add_argument(
         "--permission",

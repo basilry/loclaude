@@ -19,7 +19,7 @@ from core.types import (
 class MLXEngine:
     """MLX LM Server /v1/chat/completions 래퍼."""
 
-    DEFAULT_MODEL = "mlx-community/Qwen3.5-27B-4bit"
+    DEFAULT_MODEL = "BeastCode/Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit"
 
     def __init__(
         self,
