@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# memvid capsule (binary, regenerable)
+wiki/memory.mv2
+wiki/memory.json
+
+# sessions
+sessions/
+
+# OS
+.DS_Store
