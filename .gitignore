@@ -12,6 +12,7 @@ venv/
 wiki/memory.mv2
 wiki/memory.json
 wiki/*
+raw/*
 
 # sessions
 sessions/
