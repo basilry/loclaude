@@ -11,6 +11,7 @@ venv/
 # memvid capsule (binary, regenerable)
 wiki/memory.mv2
 wiki/memory.json
+wiki/*
 
 # sessions
 sessions/
