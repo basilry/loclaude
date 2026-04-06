@@ -6,10 +6,13 @@ import os
 from pathlib import Path
 from datetime import datetime
 
-VIDEO_PATH = Path(__file__).parent.parent / "wiki" / "memory.mp4"
-INDEX_PATH = Path(__file__).parent.parent / "wiki" / "memory_index.json"
-STUB_PATH = Path(__file__).parent.parent / "wiki" / "memory.json"
-WIKI_DIR = Path(__file__).parent.parent / "wiki"
+from core.project_paths import get_project_paths
+
+PATHS = get_project_paths()
+VIDEO_PATH = PATHS.wiki_dir / "memory.mp4"
+INDEX_PATH = PATHS.wiki_dir / "memory_index.json"
+STUB_PATH = PATHS.wiki_dir / "memory.json"
+WIKI_DIR = PATHS.wiki_dir
 
 try:
     from memvid import MemvidEncoder, MemvidRetriever

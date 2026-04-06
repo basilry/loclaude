@@ -25,6 +25,9 @@ local-claude/
 │   ├── hooks.py          # Pre/Post tool use hook 시스템
 │   ├── tool_registry.py  # 도구 등록/실행 레지스트리
 │   └── cli.py            # TUI (rich + prompt_toolkit)
+├── .internal/            # 로컬 전용 지식/리서치 데이터
+│   ├── raw/              # 원시 입력 자료
+│   └── wiki/             # 내부 위키 + capsule
 ├── skills/
 │   ├── file_ops.py       # read_file, write_file, edit_file, list_files
 │   ├── bash_exec.py      # bash 명령 실행
@@ -128,6 +131,8 @@ Claude 4.6 Opus의 reasoning trajectory로 증류된 Qwen3.5-27B. `<think>` CoT 
 | `web_fetch` | full-access | URL 내용 가져오기 |
 
 ## 위키 시스템
+
+위키와 raw 자료는 공개 Git 이력 대신 로컬 `.internal/` 아래에서 관리된다.
 
 | 명령 | 설명 |
 |------|------|

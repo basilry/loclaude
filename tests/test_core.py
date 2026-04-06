@@ -174,38 +174,75 @@ def test_commands():
 def test_config_loader():
     from core.config import load_config, build_system_prompt_from_config
 
-    # 실제 .local-claude/ 디렉토리로 테스트
-    base = Path(__file__).parent.parent
-    cfg = load_config(str(base))
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        config_dir = base / ".local-claude"
+        (config_dir / "skills" / "file-ops").mkdir(parents=True)
+        (config_dir / "skills" / "bash-exec").mkdir(parents=True)
+        (config_dir / "skills" / "search").mkdir(parents=True)
+        (config_dir / "skills" / "web-fetch").mkdir(parents=True)
+        (config_dir / "agents").mkdir(parents=True)
 
-    assert cfg.claude_md, "CLAUDE.md should be loaded"
-    assert "간결하게" in cfg.claude_md, "Korean instructions should be present"
-    assert len(cfg.skills) >= 4, f"Expected at least 4 skills, got {len(cfg.skills)}"
-    skill_names = {s.name for s in cfg.skills}
-    assert "file-ops" in skill_names
-    assert "bash-exec" in skill_names
-    assert "search" in skill_names
-    assert "web-fetch" in skill_names
+        (config_dir / "CLAUDE.md").write_text("간결하게 응답한다.\n", encoding="utf-8")
+        (config_dir / "skills" / "file-ops" / "SKILL.md").write_text(
+            "---\nname: file-ops\ndescription: file tools\ntools:\n  - read_file\n---\n",
+            encoding="utf-8",
+        )
+        (config_dir / "skills" / "bash-exec" / "SKILL.md").write_text(
+            "---\nname: bash-exec\ndescription: bash tools\n---\n",
+            encoding="utf-8",
+        )
+        (config_dir / "skills" / "search" / "SKILL.md").write_text(
+            "---\nname: search\ndescription: search tools\n---\n",
+            encoding="utf-8",
+        )
+        (config_dir / "skills" / "web-fetch" / "SKILL.md").write_text(
+            "---\nname: web-fetch\ndescription: web tools\n---\n",
+            encoding="utf-8",
+        )
+        (config_dir / "agents" / "planner.md").write_text(
+            "---\nname: planner\nrole: planner\n---\nMake plans.\n",
+            encoding="utf-8",
+        )
+        (config_dir / "agents" / "code-reviewer.md").write_text(
+            "---\nname: code-reviewer\nrole: reviewer\n---\nReview code.\n",
+            encoding="utf-8",
+        )
+        (config_dir / "agents" / "tdd-guide.md").write_text(
+            "---\nname: tdd-guide\nrole: assistant\n---\nGuide TDD.\n",
+            encoding="utf-8",
+        )
 
-    # tools 필드 확인
-    file_ops_skill = next(s for s in cfg.skills if s.name == "file-ops")
-    assert "read_file" in file_ops_skill.tools
+        cfg = load_config(str(base))
 
-    # agents
-    assert len(cfg.agents) == 3, f"Expected 3 agents, got {len(cfg.agents)}"
-    agent_names = {a.name for a in cfg.agents}
-    assert "planner" in agent_names
-    assert "code-reviewer" in agent_names
-    assert "tdd-guide" in agent_names
+        assert cfg.claude_md, "CLAUDE.md should be loaded"
+        assert "간결하게" in cfg.claude_md, "Korean instructions should be present"
+        assert len(cfg.skills) >= 4, f"Expected at least 4 skills, got {len(cfg.skills)}"
+        skill_names = {s.name for s in cfg.skills}
+        assert "file-ops" in skill_names
+        assert "bash-exec" in skill_names
+        assert "search" in skill_names
+        assert "web-fetch" in skill_names
 
-    # 시스템 프롬프트 조립
-    prompt = build_system_prompt_from_config(cfg, "## Tools\n- test_tool")
-    assert "CLAUDE.md" in prompt
-    assert "간결하게" in prompt
-    assert "Available Skills" in prompt
-    assert "Available Agents" in prompt
-    assert "test_tool" in prompt
-    print("✓ config_loader")
+        # tools 필드 확인
+        file_ops_skill = next(s for s in cfg.skills if s.name == "file-ops")
+        assert "read_file" in file_ops_skill.tools
+
+        # agents
+        assert len(cfg.agents) == 3, f"Expected 3 agents, got {len(cfg.agents)}"
+        agent_names = {a.name for a in cfg.agents}
+        assert "planner" in agent_names
+        assert "code-reviewer" in agent_names
+        assert "tdd-guide" in agent_names
+
+        # 시스템 프롬프트 조립
+        prompt = build_system_prompt_from_config(cfg, "## Tools\n- test_tool")
+        assert "CLAUDE.md" in prompt
+        assert "간결하게" in prompt
+        assert "Available Skills" in prompt
+        assert "Available Agents" in prompt
+        assert "test_tool" in prompt
+        print("✓ config_loader")
 
 
 def test_security_hook():

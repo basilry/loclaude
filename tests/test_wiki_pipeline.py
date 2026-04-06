@@ -19,7 +19,7 @@ def isolated_wiki(tmp_path, monkeypatch):
     """Redirect WIKI_DIR, STUB_PATH to temp directory for each test."""
     import skills.memvid_ops as ops
 
-    wiki_dir = tmp_path / "wiki"
+    wiki_dir = tmp_path / ".internal" / "wiki"
     wiki_dir.mkdir()
     stub_path = wiki_dir / "memory.json"
 
@@ -123,13 +123,13 @@ class TestCapsuleInfo:
 
 class TestIngestManual:
     def test_ingest_manual_creates_wiki_doc(self, isolated_wiki, monkeypatch):
-        """Simulate /ingest --manual: raw file -> wiki/references/."""
+        """Simulate /ingest --manual: raw file -> .internal/wiki/references/."""
         from commands import CommandRegistry
         from commands.builtins import register
 
         # Patch project root resolution
         project_root = isolated_wiki.parent
-        wiki_dir = project_root / "wiki"
+        wiki_dir = project_root / ".internal" / "wiki"
         wiki_dir.mkdir(exist_ok=True)
 
         # Create index.md and log.md
@@ -139,7 +139,7 @@ class TestIngestManual:
         log.write_text("# Log\n\n| Date | Action | Target | Summary |\n|---|---|---|---|\n", encoding="utf-8")
 
         # Create raw file
-        raw_dir = project_root / "raw"
+        raw_dir = project_root / ".internal" / "raw"
         raw_dir.mkdir(exist_ok=True)
         raw_file = raw_dir / "test-doc.md"
         raw_file.write_text("---\ntitle: Test Raw Doc\n---\n\nSome raw content.\n", encoding="utf-8")
@@ -158,7 +158,7 @@ class TestIngestManual:
         result = asyncio.run(cmds.execute("ingest", f"raw/test-doc.md --manual"))
 
         assert "Ingested" in result
-        # Check wiki/references/ has a file
+        # Check .internal/wiki/references/ has a file
         refs = list((wiki_dir / "references").glob("*.md"))
         assert len(refs) >= 1
 

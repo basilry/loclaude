@@ -1,11 +1,11 @@
 """
 memvid capsule initializer.
-Creates wiki/memory.mv2 (or wiki/memory.json as fallback stub).
+Creates .internal/wiki/memory.mv2 (or .internal/wiki/memory.json as fallback stub).
 """
 
-from pathlib import Path
+from core.project_paths import get_project_paths
 
-WIKI_DIR = Path(__file__).resolve().parent.parent / "wiki"
+WIKI_DIR = get_project_paths().wiki_dir
 CAPSULE_PATH = WIKI_DIR / "memory.mv2"
 STUB_PATH = WIKI_DIR / "memory.json"
 

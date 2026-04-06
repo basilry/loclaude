@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from commands import CommandRegistry
+from core.project_paths import get_project_paths
 
 
 def register(
@@ -20,6 +21,11 @@ def register(
     get_runtime=None,
 ) -> None:
     """빌트인 명령어 등록."""
+
+    paths = get_project_paths(Path(__file__).resolve().parent.parent)
+    project_root = paths.root
+    wiki_root = paths.wiki_dir
+    raw_root = paths.raw_dir
 
     @registry.command("help", "Show available commands")
     def cmd_help(args: str = "", **ctx) -> str:
@@ -134,7 +140,6 @@ def register(
             return f"No knowledge base results for: {question}"
 
         # 2. Build context from results
-        project_root = Path(__file__).parent.parent
         contexts = []
         for r in results:
             wiki_path = r.get("wiki_path", "")
@@ -182,7 +187,7 @@ def register(
             today = datetime.now().strftime("%Y-%m-%d")
             slug = re.sub(r'[^a-z0-9]+', '-', question.lower())[:50].strip('-')
 
-            queries_dir = project_root / "wiki" / "queries"
+            queries_dir = wiki_root / "queries"
             queries_dir.mkdir(parents=True, exist_ok=True)
             query_file = queries_dir / f"{today}-{slug}.md"
             query_content = (
@@ -200,10 +205,10 @@ def register(
                 content=query_content,
                 title=f"Q: {question}",
                 tags=["query-result"],
-                wiki_path=f"wiki/queries/{today}-{slug}.md",
+                wiki_path=f".internal/wiki/queries/{today}-{slug}.md",
             )
 
-            index_path = project_root / "wiki" / "index.md"
+            index_path = wiki_root / "index.md"
             if index_path.exists():
                 index_text = index_path.read_text(encoding="utf-8")
                 new_entry = f"- [Q: {question}](queries/{today}-{slug}.md)"
@@ -214,7 +219,7 @@ def register(
                     )
                     index_path.write_text(index_text, encoding="utf-8")
 
-            log_path = project_root / "wiki" / "log.md"
+            log_path = wiki_root / "log.md"
             if log_path.exists():
                 log_text = log_path.read_text(encoding="utf-8")
                 log_entry = f"| {today} | query | queries/{today}-{slug}.md | Q: {question} |"
@@ -300,8 +305,7 @@ def register(
 
     @registry.command("wiki-export", "Export wiki (usage: /wiki-export [--format mv2|md-bundle|html])")
     def cmd_wiki_export(args: str = "", **ctx) -> str:
-        project_root = Path(__file__).parent.parent
-        wiki_dir = project_root / "wiki"
+        wiki_dir = wiki_root
         exports_dir = project_root / "exports"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -382,8 +386,7 @@ def register(
 
     @registry.command("lint", "Check wiki consistency (usage: /lint [--fix])")
     def cmd_lint(args: str = "", **ctx) -> str:
-        project_root = Path(__file__).parent.parent
-        wiki_dir = project_root / "wiki"
+        wiki_dir = wiki_root
         index_path = wiki_dir / "index.md"
         fix = "--fix" in args
 
@@ -557,7 +560,7 @@ def register(
                         pass
             type_counts[doc_type] = type_counts.get(doc_type, 0) + 1
 
-        # Raw files (non-.md in wiki/)
+        # Raw files (non-.md in .internal/wiki/)
         raw_files = sum(1 for f in wiki_dir.rglob("*") if f.is_file() and f.suffix != ".md")
 
         # Capsule info
@@ -581,7 +584,7 @@ def register(
                 out_of_sync += 1
 
         # Capsule file info
-        capsule_file = "wiki/memory.json"
+        capsule_file = ".internal/wiki/memory.json"
         capsule_kb = 0
         capsule_modified = "N/A"
         if STUB_PATH.exists():
@@ -698,10 +701,16 @@ def register(
         if not raw_path_str:
             return "Usage: /ingest <raw_path> [--manual]"
 
-        project_root = Path(__file__).parent.parent
-        raw_path = project_root / raw_path_str
-        if not raw_path.exists():
-            raw_path = Path(raw_path_str)
+        normalized = raw_path_str.strip()
+        raw_candidates = [
+            project_root / normalized,
+            raw_root / normalized,
+        ]
+        if normalized.startswith("raw/"):
+            raw_candidates.append(raw_root / normalized.removeprefix("raw/"))
+        if normalized.startswith(".internal/raw/"):
+            raw_candidates.append(project_root / normalized)
+        raw_path = next((candidate for candidate in raw_candidates if candidate.exists()), Path(normalized))
         if not raw_path.exists():
             return f"File not found: {raw_path_str}"
         if raw_path.suffix not in (".md", ".txt"):
@@ -786,10 +795,10 @@ def register(
         if not slug:
             slug = raw_path.stem
 
-        # Create wiki/references/{slug}.md
-        wiki_dir = project_root / "wiki" / "references"
-        wiki_dir.mkdir(parents=True, exist_ok=True)
-        wiki_file = wiki_dir / f"{slug}.md"
+        # Create .internal/wiki/references/{slug}.md
+        references_dir = wiki_root / "references"
+        references_dir.mkdir(parents=True, exist_ok=True)
+        wiki_file = references_dir / f"{slug}.md"
 
         tags_yaml = ", ".join(tags)
         concepts_section = ""
@@ -818,11 +827,11 @@ def register(
             content=wiki_content,
             title=title,
             tags=tags,
-            wiki_path=f"wiki/references/{slug}.md",
+            wiki_path=f".internal/wiki/references/{slug}.md",
         )
 
-        # Update wiki/index.md
-        index_path = project_root / "wiki" / "index.md"
+        # Update .internal/wiki/index.md
+        index_path = wiki_root / "index.md"
         index_text = index_path.read_text(encoding="utf-8")
         new_entry = f"- [{title}](references/{slug}.md) -- ingested from {raw_path.name}"
         if new_entry not in index_text:
@@ -832,12 +841,12 @@ def register(
             )
             index_path.write_text(index_text, encoding="utf-8")
 
-        # Update wiki/log.md
-        log_path = project_root / "wiki" / "log.md"
+        # Update .internal/wiki/log.md
+        log_path = wiki_root / "log.md"
         log_text = log_path.read_text(encoding="utf-8")
         mode_label = "manual" if manual else "llm"
         log_entry = f"| {today} | ingest ({mode_label}) | references/{slug}.md | {title} |"
         log_text = log_text.rstrip() + "\n" + log_entry + "\n"
         log_path.write_text(log_text, encoding="utf-8")
 
-        return f"Ingested: {raw_path.name} -> wiki/references/{slug}.md ({len(tags)} tags)"
+        return f"Ingested: {raw_path.name} -> .internal/wiki/references/{slug}.md ({len(tags)} tags)"

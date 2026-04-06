@@ -1,13 +1,16 @@
-"""Obsidian vault symlink script. Links wiki/ into an Obsidian vault."""
+"""Obsidian vault symlink script. Links .internal/wiki into an Obsidian vault."""
 
 import os
 import sys
 from pathlib import Path
 
+from core.project_paths import get_project_paths
+
 
 def main():
-    project_root = Path(__file__).resolve().parent.parent
-    wiki_dir = project_root / "wiki"
+    paths = get_project_paths(Path(__file__).resolve().parent.parent)
+    project_root = paths.root
+    wiki_dir = paths.wiki_dir
 
     # 1. Detect vault path
     vault_path = None

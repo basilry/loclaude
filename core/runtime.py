@@ -18,6 +18,7 @@ from typing import AsyncIterator, Callable, Awaitable
 from core.config import ProjectConfig, build_system_prompt_from_config, load_config
 from core.engine import MLXEngine
 from core.hooks import HookRunner, HookPhase, HookContext, HookResult
+from core.project_paths import get_project_paths
 from core.session import Session
 from core.tool_registry import ToolRegistry
 from core.types import (
@@ -78,8 +79,7 @@ class ConversationRuntime:
     def _get_wiki_context(self, user_input: str) -> str:
         """사용자 메시지로 캡슐 검색, 관련 문서 snippet을 반환."""
         try:
-            from pathlib import Path
-            stub_path = Path(__file__).parent.parent / "wiki" / "memory.json"
+            stub_path = get_project_paths().wiki_dir / "memory.json"
             if not stub_path.exists():
                 return ""
 

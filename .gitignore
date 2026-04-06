@@ -13,6 +13,8 @@ wiki/memory.mv2
 wiki/memory.json
 wiki/*
 raw/*
+.internal/
+.local-claude/
 
 # sessions
 sessions/
