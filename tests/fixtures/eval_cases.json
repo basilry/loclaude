@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "id": "eval-001",
+      "name": "simple_function",
+      "prompt": "Write a Python function that checks if a number is prime. Return only the code.",
+      "expected_output_contains": ["def", "return"],
+      "max_turns": 1,
+      "timeout_sec": 30.0
+    },
+    {
+      "id": "eval-002",
+      "name": "file_read_request",
+      "prompt": "I need to read the contents of config.yaml. What tool should I use?",
+      "expected_output_contains": ["read"],
+      "expected_tool_calls": ["read_file"],
+      "max_turns": 1,
+      "timeout_sec": 30.0
+    },
+    {
+      "id": "eval-003",
+      "name": "bug_explanation",
+      "prompt": "This code has a bug: `for i in range(len(lst)): lst.remove(lst[i])`. Explain the bug and how to fix it.",
+      "expected_output_contains": ["fix", "index"],
+      "max_turns": 1,
+      "timeout_sec": 30.0
+    },
+    {
+      "id": "eval-004",
+      "name": "refactor_suggestion",
+      "prompt": "Suggest how to refactor this code:\n```python\ndef process(data):\n    result = []\n    for item in data:\n        if item > 0:\n            result.append(item * 2)\n    return result\n```",
+      "expected_output_contains": ["list comprehension"],
+      "max_turns": 1,
+      "timeout_sec": 30.0
+    },
+    {
+      "id": "eval-005",
+      "name": "code_explanation",
+      "prompt": "Explain what this Python decorator does:\n```python\ndef retry(max_attempts=3):\n    def decorator(func):\n        def wrapper(*args, **kwargs):\n            for i in range(max_attempts):\n                try:\n                    return func(*args, **kwargs)\n                except Exception:\n                    if i == max_attempts - 1:\n                        raise\n        return wrapper\n    return decorator\n```",
+      "expected_output_contains": ["retry", "exception"],
+      "max_turns": 1,
+      "timeout_sec": 30.0
+    }
+  ]
+}

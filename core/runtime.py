@@ -18,8 +18,10 @@ from typing import AsyncIterator, Callable, Awaitable
 from core.config import ProjectConfig, build_system_prompt_from_config, load_config
 from core.engines import EngineProtocol
 from core.hooks import HookRunner, HookPhase, HookContext, HookResult
+from core.planner import summarize_active_plan
 from core.project_paths import get_project_paths
 from core.session import Session
+from core.tasks import Plan
 from core.tool_registry import ToolRegistry
 from core.types import (
     EventType, Message, PermissionMode, Role,
@@ -42,6 +44,7 @@ class ConversationRuntime:
         permission_mode: PermissionMode = PermissionMode.FULL_ACCESS,
         system_prompt: str | None = None,
         project_config: ProjectConfig | None = None,
+        plan: Plan | None = None,
         max_iterations: int = 25,
         temperature: float = 0.7,
         max_tokens: int = 4096,
@@ -52,6 +55,7 @@ class ConversationRuntime:
         self.session = session or Session()
         self.permission_mode = permission_mode
         self.project_config = project_config
+        self.plan = plan
         self.max_iterations = max_iterations
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -67,14 +71,19 @@ class ConversationRuntime:
             prompt = build_system_prompt_from_config(self.project_config, tools_text)
             if custom:
                 prompt += "\n\n" + custom
-            return prompt
+        else:
+            # fallback: 기본 프롬프트
+            parts = [SYSTEM_PROMPT_BASE]
+            if custom:
+                parts.append(custom)
+            parts.append(tools_text)
+            prompt = "\n\n".join(parts)
 
-        # fallback: 기본 프롬프트
-        parts = [SYSTEM_PROMPT_BASE]
-        if custom:
-            parts.append(custom)
-        parts.append(tools_text)
-        return "\n\n".join(parts)
+        # Active plan context 주입
+        if self.plan:
+            prompt += "\n\n" + summarize_active_plan(self.plan)
+
+        return prompt
 
     def _get_wiki_context(self, user_input: str) -> str:
         """사용자 메시지로 메모리 백엔드 검색, 관련 문서 snippet을 반환."""
@@ -131,9 +140,13 @@ class ConversationRuntime:
         user_msg = Message(role=Role.USER, content=user_input)
         self.session.add(user_msg)
 
-        # 1.5. Wiki context injection
+        # 1.5. Wiki context injection + plan refresh
         wiki_context = self._get_wiki_context(user_input)
-        active_system = self._system_prompt + wiki_context if wiki_context else self._system_prompt
+        active_system = self._system_prompt
+        if self.plan:
+            active_system = self._build_system_prompt(None)
+        if wiki_context:
+            active_system += wiki_context
 
         iteration = 0
 

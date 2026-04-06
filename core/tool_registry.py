@@ -5,9 +5,12 @@ from __future__ import annotations
 import inspect
 import json
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any, Callable, Awaitable, TYPE_CHECKING
 
 from core.types import PermissionMode, ToolCall, ToolResult
+
+if TYPE_CHECKING:
+    from core.tool_groups import ToolGroup
 
 
 @dataclass
@@ -36,6 +39,7 @@ class ToolRegistry:
 
     def __init__(self):
         self._tools: dict[str, ToolSpec] = {}
+        self._groups: dict[str, ToolGroup] = {}
 
     def register(
         self,
@@ -102,6 +106,25 @@ class ToolRegistry:
             lines.append(t.to_prompt_entry())
             lines.append("")
         return "\n".join(lines)
+
+    # ---- Group management ----
+
+    def register_group(self, group: ToolGroup) -> None:
+        """Register a tool group. Tools in the group are tagged, not duplicated."""
+        self._groups[group.name] = group
+
+    def load_group(self, name: str) -> list[str]:
+        """Return tool names belonging to the named group."""
+        group = self._groups.get(name)
+        if not group:
+            return []
+        return [n for n in group.tool_names if n in self._tools]
+
+    def list_groups(self) -> list[ToolGroup]:
+        """Return all registered groups."""
+        return list(self._groups.values())
+
+    # ---- Execution ----
 
     async def execute(self, call: ToolCall) -> ToolResult:
         """도구 실행."""

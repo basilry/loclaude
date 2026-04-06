@@ -1,0 +1,37 @@
+[
+  {
+    "id": "code-gen-fibonacci",
+    "name": "Fibonacci function generation",
+    "prompt": "Write a Python function called fibonacci that takes an integer n and returns the nth Fibonacci number. Use iterative approach.",
+    "expected_keywords": ["def fibonacci", "return"],
+    "timeout_sec": 30.0
+  },
+  {
+    "id": "tool-call-read-file",
+    "name": "File read tool call",
+    "prompt": "Read the file at path /tmp/test.txt and show its contents. Use the read_file tool.",
+    "expected_tool": "read_file",
+    "timeout_sec": 30.0
+  },
+  {
+    "id": "bug-fix-off-by-one",
+    "name": "Off-by-one bug fix",
+    "prompt": "Fix the bug in this code:\n```python\ndef get_last_element(lst):\n    return lst[len(lst)]\n```\nExplain the fix.",
+    "expected_keywords": ["len(lst) - 1", "index"],
+    "timeout_sec": 30.0
+  },
+  {
+    "id": "explain-code",
+    "name": "Code explanation",
+    "prompt": "Explain what this Python code does in 2-3 sentences:\n```python\nfrom functools import reduce\nresult = reduce(lambda a, b: a * b, range(1, 6))\n```",
+    "expected_keywords": ["factorial", "120"],
+    "timeout_sec": 30.0
+  },
+  {
+    "id": "json-schema-gen",
+    "name": "JSON schema generation",
+    "prompt": "Generate a JSON schema for a User object with fields: name (string, required), age (integer, min 0), email (string, format email, required).",
+    "expected_keywords": ["required", "properties", "string"],
+    "timeout_sec": 30.0
+  }
+]
