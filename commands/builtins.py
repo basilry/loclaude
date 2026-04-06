@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from commands import CommandRegistry
+from core.health import check_paths, check_engine, build_health_report, HealthCheck
 from core.project_paths import get_project_paths
 
 
@@ -27,28 +28,116 @@ def register(
     wiki_root = paths.wiki_dir
     raw_root = paths.raw_dir
 
+    def _rel(path: Path) -> str:
+        try:
+            return str(path.relative_to(project_root))
+        except ValueError:
+            return str(path)
+
+    def _state(path: Path, kind: str = "dir") -> str:
+        exists = path.is_dir() if kind == "dir" else path.is_file()
+        return f"{_rel(path)} [{'ok' if exists else 'missing'}]"
+
     @registry.command("help", "Show available commands")
     def cmd_help(args: str = "", **ctx) -> str:
+        groups = {
+            "Core": {"help", "status", "doctor", "compact", "sessions", "resume", "clear", "exit"},
+            "Runtime": {"tools", "model", "config"},
+            "Knowledge Base": {"query", "wiki-search", "wiki-export", "lint", "wiki-status", "wiki-history", "ingest"},
+        }
         lines = ["Available commands:", ""]
-        for cmd in registry.list_commands():
-            lines.append(f"  /{cmd.name:<16} {cmd.description}")
+        listed: set[str] = set()
+        for label, names in groups.items():
+            lines.append(f"{label}:")
+            for cmd in registry.list_commands():
+                if cmd.name in names:
+                    lines.append(f"  /{cmd.name:<16} {cmd.description}")
+                    listed.add(cmd.name)
+            lines.append("")
+        remaining = [cmd for cmd in registry.list_commands() if cmd.name not in listed]
+        if remaining:
+            lines.append("Other:")
+            for cmd in remaining:
+                lines.append(f"  /{cmd.name:<16} {cmd.description}")
+            lines.append("")
+        lines.append("Local-only data:")
+        lines.append(f"  config   {_rel(paths.config_dir)}")
+        lines.append(f"  wiki     {_rel(wiki_root)}")
+        lines.append(f"  raw      {_rel(raw_root)}")
         lines.append("")
-        lines.append("Type your message to chat, or /command to run a command.")
+        lines.append("Type your message to chat, or /command to run a command. Use /doctor to verify local paths and engine reachability.")
         return "\n".join(lines)
 
     @registry.command("status", "Show session status and token usage")
     def cmd_status(args: str = "", **ctx) -> str:
         session = get_session() if get_session else None
-        if not session:
-            return "No active session."
-        u = session.total_usage
-        lines = [
-            f"Session: {session.id}",
-            f"Messages: {len(session.messages)}",
-            f"Tokens: {u.eval_count} generated",
-            f"Speed: {u.tok_per_sec:.1f} tok/s" if u.tok_per_sec else "",
-        ]
+        runtime = get_runtime() if get_runtime else None
+        lines = ["Status", "---"]
+        if session:
+            u = session.total_usage
+            lines.extend([
+                f"Session:   {session.id}",
+                f"Messages:  {len(session.messages)}",
+                f"Tokens:    {u.eval_count} generated",
+            ])
+            if u.tok_per_sec:
+                lines.append(f"Speed:     {u.tok_per_sec:.1f} tok/s")
+        else:
+            lines.append("Session:   inactive")
+
+        if runtime:
+            lines.append(f"Model:     {getattr(runtime.engine, 'model', 'unknown')}")
+            if getattr(runtime.engine, "base_url", None):
+                lines.append(f"Endpoint:  {runtime.engine.base_url}")
+        else:
+            lines.append("Runtime:   unavailable")
+
+        path_checks = check_paths({
+            "Config": paths.config_dir,
+            "Wiki": wiki_root,
+            "Raw": raw_root,
+            "Capsule": wiki_root / "memory.json",
+        })
+        for c in path_checks:
+            status = "ok" if c.status == "ok" else "missing"
+            lines.append(f"{c.name + ':':<11}{_rel(Path(c.message))} [{status}]")
         return "\n".join(l for l in lines if l)
+
+    @registry.command("doctor", "Check local config, internal data, and engine reachability")
+    async def cmd_doctor(args: str = "", **ctx) -> str:
+        runtime = get_runtime() if get_runtime else None
+
+        path_map = {
+            "Config dir": paths.config_dir,
+            "CLAUDE.md": paths.config_dir / "CLAUDE.md",
+            "Internal dir": paths.internal_dir,
+            "Wiki dir": wiki_root,
+            "Raw dir": raw_root,
+            "Wiki index": wiki_root / "index.md",
+            "Wiki log": wiki_root / "log.md",
+            "Capsule stub": wiki_root / "memory.json",
+        }
+        path_checks = check_paths(path_map)
+
+        engine = getattr(runtime, "engine", None) if runtime else None
+        engine_check = await check_engine(engine)
+
+        report = build_health_report(path_checks, engine_check)
+
+        lines = ["Doctor", "---"]
+        for c in report.checks:
+            tag = c.status.upper()
+            lines.append(f"[{tag}] {c.name}: {_rel(Path(c.message)) if '/' in c.message else c.message}")
+
+        if engine:
+            model = getattr(engine, "model", "unknown")
+            lines.append(f"[INFO] Model: {model}")
+            base_url = getattr(engine, "base_url", None)
+            if base_url:
+                lines.append(f"[INFO] Endpoint: {base_url}")
+
+        lines.append(report.summary)
+        return "\n".join(lines)
 
     @registry.command("compact", "Compress old messages to save context (LLM summary)")
     async def cmd_compact(args: str = "", **ctx) -> str:
@@ -420,9 +509,12 @@ def register(
             issues["broken_links"].append(f"File missing: {b}")
 
         # --- 2. Capsule sync check ---
-        from skills.memvid_ops import _load_stub, _sha256
+        import json as _json
+        stub_path = wiki_dir / "memory.json"
+        entries = _json.loads(stub_path.read_text(encoding="utf-8")) if stub_path.exists() else []
+        if isinstance(entries, dict):
+            entries = entries.get("entries", [])
 
-        entries = _load_stub()
         capsule_hashes = {}
         for e in entries:
             wp = e.get("wiki_path", "")
@@ -432,7 +524,7 @@ def register(
         for md in wiki_dir.rglob("*.md"):
             rel_from_parent = str(md.relative_to(wiki_dir.parent))
             content = md.read_text(encoding="utf-8")
-            file_hash = _sha256(content)
+            file_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
             if rel_from_parent in capsule_hashes:
                 if capsule_hashes[rel_from_parent] != file_hash:
                     issues["capsule_desync"].append(f"Hash mismatch: {rel_from_parent}")
@@ -534,9 +626,11 @@ def register(
 
     @registry.command("wiki-status", "Show wiki + capsule dashboard")
     def cmd_wiki_status(args: str = "", **ctx) -> str:
-        from skills.memvid_ops import capsule_info, _load_stub, _sha256, STUB_PATH, WIKI_DIR
+        from skills.memvid_ops import capsule_info, WIKI_DIR
+        import json as _json
 
         wiki_dir = WIKI_DIR
+        stub_path = wiki_dir / "memory.json"
         exclude = {"_schema.md", "log.md", "index.md"}
 
         # Count documents by type
@@ -567,7 +661,9 @@ def register(
         info = capsule_info()
 
         # Sync check
-        entries = _load_stub()
+        entries = _json.loads(stub_path.read_text(encoding="utf-8")) if stub_path.exists() else []
+        if isinstance(entries, dict):
+            entries = entries.get("entries", [])
         capsule_hashes = {e.get("wiki_path", ""): e.get("sha256", "") for e in entries}
         out_of_sync = 0
         for md in wiki_dir.rglob("*.md"):
@@ -576,7 +672,7 @@ def register(
                 continue
             rel_parent = str(md.relative_to(wiki_dir.parent))
             content = md.read_text(encoding="utf-8")
-            file_hash = _sha256(content)
+            file_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
             if rel_parent in capsule_hashes:
                 if capsule_hashes[rel_parent] != file_hash:
                     out_of_sync += 1
@@ -587,9 +683,9 @@ def register(
         capsule_file = ".internal/wiki/memory.json"
         capsule_kb = 0
         capsule_modified = "N/A"
-        if STUB_PATH.exists():
-            capsule_kb = round(STUB_PATH.stat().st_size / 1024, 1)
-            mtime = os.path.getmtime(STUB_PATH)
+        if stub_path.exists():
+            capsule_kb = round(stub_path.stat().st_size / 1024, 1)
+            mtime = os.path.getmtime(stub_path)
             capsule_modified = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
 
         # Format type breakdown

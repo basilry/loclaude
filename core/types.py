@@ -121,6 +121,15 @@ class TokenUsage:
 
 # ── Permission ──
 
+@dataclass
+class SessionMetadata:
+    provider: str = ""
+    model: str = ""
+    base_url: str = ""
+    ttft_ms: float = 0.0
+    tok_per_sec: float = 0.0
+
+
 class PermissionMode(str, Enum):
     READ_ONLY = "read-only"
     WORKSPACE_WRITE = "workspace-write"

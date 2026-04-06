@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import AsyncIterator, Callable, Awaitable
 
 from core.config import ProjectConfig, build_system_prompt_from_config, load_config
-from core.engine import MLXEngine
+from core.engines import EngineProtocol
 from core.hooks import HookRunner, HookPhase, HookContext, HookResult
 from core.project_paths import get_project_paths
 from core.session import Session
@@ -35,7 +35,7 @@ class ConversationRuntime:
 
     def __init__(
         self,
-        engine: MLXEngine,
+        engine: EngineProtocol,
         tools: ToolRegistry,
         hooks: HookRunner | None = None,
         session: Session | None = None,
@@ -77,14 +77,32 @@ class ConversationRuntime:
         return "\n\n".join(parts)
 
     def _get_wiki_context(self, user_input: str) -> str:
-        """사용자 메시지로 캡슐 검색, 관련 문서 snippet을 반환."""
+        """사용자 메시지로 메모리 백엔드 검색, 관련 문서 snippet을 반환."""
         try:
-            stub_path = get_project_paths().wiki_dir / "memory.json"
+            from core.memory import create_memory_backend
+
+            wiki_dir = get_project_paths().wiki_dir
+            stub_path = wiki_dir / "memory.json"
             if not stub_path.exists():
                 return ""
 
-            from skills.memvid_ops import capsule_search
-            results = capsule_search(user_input, mode="hybrid", top_k=3)
+            backend = create_memory_backend(wiki_dir=wiki_dir)
+
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    results = pool.submit(
+                        asyncio.run, backend.search(user_input, top_k=3)
+                    ).result()
+            else:
+                results = asyncio.run(backend.search(user_input, top_k=3))
+
             if not results:
                 return ""
 

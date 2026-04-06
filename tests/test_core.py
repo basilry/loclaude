@@ -103,7 +103,7 @@ def test_hooks():
 def test_engine_creation():
     from core.engine import MLXEngine
     engine = MLXEngine()
-    assert engine.model == "mlx-community/Qwen3.5-27B-4bit"
+    assert engine.model == "BeastCode/Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit"
     assert engine.base_url == "http://localhost:8080"
     assert engine.timeout == 300
 
@@ -169,6 +169,55 @@ def test_commands():
     r = asyncio.run(cmds.execute("nope"))
     assert "Unknown" in r
     print("✓ commands")
+
+
+def test_status_and_doctor_commands():
+    from commands import CommandRegistry
+    from commands.builtins import register
+    import commands.builtins as builtins_mod
+
+    class StubEngine:
+        model = "stub-model"
+        base_url = "http://localhost:9999"
+
+        async def ping(self):
+            return {"version": "stub", "models": 1}
+
+    class StubRuntime:
+        def __init__(self):
+            self.engine = StubEngine()
+            self.project_config = None
+
+    original_file = builtins_mod.__file__
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / ".local-claude").mkdir()
+            (base / ".local-claude" / "CLAUDE.md").write_text("test", encoding="utf-8")
+            (base / ".internal" / "wiki").mkdir(parents=True)
+            (base / ".internal" / "raw").mkdir(parents=True)
+            (base / ".internal" / "wiki" / "index.md").write_text("# Index", encoding="utf-8")
+            (base / ".internal" / "wiki" / "log.md").write_text("# Log", encoding="utf-8")
+            (base / ".internal" / "wiki" / "memory.json").write_text("{}", encoding="utf-8")
+
+            builtins_mod.__file__ = str(base / "commands" / "builtins.py")
+
+            cmds = CommandRegistry()
+            register(cmds, get_runtime=lambda: StubRuntime())
+
+            help_text = asyncio.run(cmds.execute("help"))
+            assert "/doctor" in help_text
+            assert ".internal/wiki" in help_text
+
+            status = asyncio.run(cmds.execute("status"))
+            assert "stub-model" in status
+            assert ".internal/wiki [ok]" in status
+
+            doctor = asyncio.run(cmds.execute("doctor"))
+            assert "[OK] Config dir" in doctor
+            assert "[OK] Engine ping" in doctor
+    finally:
+        builtins_mod.__file__ = original_file
 
 
 def test_config_loader():

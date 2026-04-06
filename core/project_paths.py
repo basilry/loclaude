@@ -13,6 +13,8 @@ class ProjectPaths:
     internal_dir: Path
     wiki_dir: Path
     raw_dir: Path
+    sessions_dir: Path
+    exports_dir: Path
 
 
 def get_project_paths(project_root: str | Path | None = None) -> ProjectPaths:
@@ -24,4 +26,6 @@ def get_project_paths(project_root: str | Path | None = None) -> ProjectPaths:
         internal_dir=internal_dir,
         wiki_dir=internal_dir / "wiki",
         raw_dir=internal_dir / "raw",
+        sessions_dir=internal_dir / "sessions",
+        exports_dir=root / "exports",
     )

@@ -108,7 +108,8 @@ Claude 4.6 Opus의 reasoning trajectory로 증류된 Qwen3.5-27B. `<think>` CoT 
 | 명령 | 설명 |
 |------|------|
 | `/help` | 명령어 목록 |
-| `/status` | 세션 상태, 토큰 사용량 |
+| `/status` | 세션, 모델, 내부 경로 상태 요약 |
+| `/doctor` | `.local-claude`, `.internal`, 엔진 연결 상태 점검 |
 | `/compact [N]` | 오래된 메시지 압축 (최근 N개 유지) |
 | `/tools` | 사용 가능한 도구 목록 |
 | `/sessions` | 저장된 세션 목록 |
@@ -133,6 +134,9 @@ Claude 4.6 Opus의 reasoning trajectory로 증류된 Qwen3.5-27B. `<think>` CoT 
 ## 위키 시스템
 
 위키와 raw 자료는 공개 Git 이력 대신 로컬 `.internal/` 아래에서 관리된다.
+
+- 설정 프롬프트와 스킬/에이전트는 `.local-claude/`에서 로드된다.
+- 운영 중 경로와 캡슐 파일 확인은 `/status`, 자세한 진단은 `/doctor`를 사용한다.
 
 | 명령 | 설명 |
 |------|------|

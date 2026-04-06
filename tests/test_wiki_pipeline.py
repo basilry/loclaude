@@ -16,17 +16,14 @@ from skills.memvid_ops import capsule_put, capsule_search, capsule_info, capsule
 
 @pytest.fixture(autouse=True)
 def isolated_wiki(tmp_path, monkeypatch):
-    """Redirect WIKI_DIR, STUB_PATH to temp directory for each test."""
+    """Redirect WIKI_DIR to temp directory and reset backend for each test."""
     import skills.memvid_ops as ops
 
     wiki_dir = tmp_path / ".internal" / "wiki"
-    wiki_dir.mkdir()
-    stub_path = wiki_dir / "memory.json"
+    wiki_dir.mkdir(parents=True)
 
     monkeypatch.setattr(ops, "WIKI_DIR", wiki_dir)
-    monkeypatch.setattr(ops, "STUB_PATH", stub_path)
-    monkeypatch.setattr(ops, "VIDEO_PATH", wiki_dir / "memory.mp4")
-    monkeypatch.setattr(ops, "INDEX_PATH", wiki_dir / "memory_index.json")
+    monkeypatch.setattr(ops, "_backend", None)
 
     yield wiki_dir
 
@@ -127,10 +124,9 @@ class TestIngestManual:
         from commands import CommandRegistry
         from commands.builtins import register
 
-        # Patch project root resolution
-        project_root = isolated_wiki.parent
-        wiki_dir = project_root / ".internal" / "wiki"
-        wiki_dir.mkdir(exist_ok=True)
+        # isolated_wiki = tmp_path/.internal/wiki, so .parent.parent = tmp_path (project root)
+        project_root = isolated_wiki.parent.parent
+        wiki_dir = isolated_wiki
 
         # Create index.md and log.md
         index = wiki_dir / "index.md"
@@ -140,16 +136,12 @@ class TestIngestManual:
 
         # Create raw file
         raw_dir = project_root / ".internal" / "raw"
-        raw_dir.mkdir(exist_ok=True)
+        raw_dir.mkdir(parents=True, exist_ok=True)
         raw_file = raw_dir / "test-doc.md"
         raw_file.write_text("---\ntitle: Test Raw Doc\n---\n\nSome raw content.\n", encoding="utf-8")
 
-        # Patch Path(__file__).parent.parent in builtins
         import commands.builtins as builtins_mod
-        original_file = builtins_mod.__file__
-        # We need the ingest command to resolve project_root correctly
-        # Monkey-patch approach: override __file__ resolution
-        monkeypatch.setattr(builtins_mod, "__file__", str(wiki_dir.parent / "commands" / "builtins.py"))
+        monkeypatch.setattr(builtins_mod, "__file__", str(project_root / "commands" / "builtins.py"))
 
         cmds = CommandRegistry()
         register(cmds)
@@ -175,7 +167,7 @@ class TestLintDetectsOrphan:
     def test_orphan_detection(self, isolated_wiki, monkeypatch):
         """Create doc not in index -> /lint reports orphan."""
         import commands.builtins as builtins_mod
-        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent / "commands" / "builtins.py"))
+        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent.parent / "commands" / "builtins.py"))
 
         # Create index with one entry
         _make_index(isolated_wiki, [("Listed Doc", "concepts/listed.md")])
@@ -203,7 +195,7 @@ class TestWikiStatus:
         import commands.builtins as builtins_mod
         import skills.memvid_ops as ops
 
-        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent / "commands" / "builtins.py"))
+        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent.parent / "commands" / "builtins.py"))
 
         _make_doc(isolated_wiki, "concepts/doc1.md", "Doc One")
         _make_doc(isolated_wiki, "concepts/doc2.md", "Doc Two")
@@ -225,7 +217,7 @@ class TestWikiExport:
     def test_export_mv2(self, isolated_wiki, monkeypatch):
         """/wiki-export --format mv2 copies capsule files."""
         import commands.builtins as builtins_mod
-        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent / "commands" / "builtins.py"))
+        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent.parent / "commands" / "builtins.py"))
 
         # Create a stub capsule file
         capsule_stub = isolated_wiki / "memory.json"
@@ -241,13 +233,13 @@ class TestWikiExport:
         result = asyncio.run(cmds.execute("wiki-export", "--format mv2"))
 
         assert "Exported" in result
-        exports_dir = isolated_wiki.parent / "exports" / "mv2"
+        exports_dir = isolated_wiki.parent.parent / "exports" / "mv2"
         assert exports_dir.exists()
 
     def test_export_md_bundle(self, isolated_wiki, monkeypatch):
         """/wiki-export --format md-bundle creates tar.gz."""
         import commands.builtins as builtins_mod
-        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent / "commands" / "builtins.py"))
+        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent.parent / "commands" / "builtins.py"))
 
         _make_doc(isolated_wiki, "concepts/test.md", "Test")
 
@@ -266,7 +258,7 @@ class TestWikiExport:
     def test_export_html(self, isolated_wiki, monkeypatch):
         """/wiki-export --format html generates HTML files."""
         import commands.builtins as builtins_mod
-        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent / "commands" / "builtins.py"))
+        monkeypatch.setattr(builtins_mod, "__file__", str(isolated_wiki.parent.parent / "commands" / "builtins.py"))
 
         _make_doc(isolated_wiki, "concepts/test.md", "Test HTML")
 
@@ -280,7 +272,7 @@ class TestWikiExport:
         result = asyncio.run(cmds.execute("wiki-export", "--format html"))
 
         assert "Exported" in result
-        exports_html = isolated_wiki.parent / "exports" / "html"
+        exports_html = isolated_wiki.parent.parent / "exports" / "html"
         assert exports_html.exists()
         # Find the index.html
         index_files = list(exports_html.rglob("index.html"))
