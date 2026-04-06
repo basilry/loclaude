@@ -73,7 +73,7 @@ class Session:
                 "형식: 마크다운, 200줄 이내\n\n"
                 + "\n".join(f"[{m.role.value}] {m.content[:200]}" for m in old_msgs)
             )
-            summary, _, _, _ = await engine.chat(
+            summary, usage = await engine.chat(
                 [Message(role=Role.USER, content=summary_prompt)],
                 max_tokens=1024,
             )
@@ -156,7 +156,7 @@ async def auto_title(session: Session, engine) -> None:
     if not first_user:
         return
     from core.types import Role
-    title, _, _, _ = await engine.chat(
+    title, usage = await engine.chat(
         [Message(
             role=Role.USER,
             content=(

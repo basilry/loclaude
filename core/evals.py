@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import time
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from core.engines.base import EngineProtocol
+from core.stream_capture import collect_stream
 from core.types import Message, Role
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,9 @@ class EvalResult:
     expected_matches: dict[str, bool]
     tool_calls_made: list[str]
     duration_ms: float
+    tool_assertion_passed: bool = True
+    timeout_triggered: bool = False
+    first_token_seen: bool = False
     error: str | None = None
 
     def to_dict(self) -> dict:
@@ -62,6 +65,9 @@ class EvalResult:
             "expected_matches": self.expected_matches,
             "tool_calls_made": self.tool_calls_made,
             "duration_ms": self.duration_ms,
+            "tool_assertion_passed": self.tool_assertion_passed,
+            "timeout_triggered": self.timeout_triggered,
+            "first_token_seen": self.first_token_seen,
             "error": self.error,
         }
 
@@ -69,48 +75,56 @@ class EvalResult:
 async def run_eval_case(engine: EngineProtocol, case: EvalCase) -> EvalResult:
     """단일 eval 케이스를 실행하고 결과를 반환."""
     messages = [Message(role=Role.USER, content=case.prompt)]
-    start = time.monotonic()
 
-    try:
-        content, _usage = await engine.chat(
-            messages,
-            temperature=0.3,
-            max_tokens=2048,
-        )
-        duration_ms = (time.monotonic() - start) * 1000
+    capture = await collect_stream(
+        engine,
+        messages,
+        temperature=0.3,
+        max_tokens=2048,
+        timeout_sec=case.timeout_sec,
+    )
 
-        output_lower = content.lower()
-        expected_matches = {
-            kw: kw.lower() in output_lower
-            for kw in case.expected_output_contains
-        }
-
-        # tool call 검증은 현재 chat() 반환값에 포함되지 않으므로 빈 리스트
-        tool_calls_made: list[str] = []
-
-        all_keywords_found = all(expected_matches.values()) if expected_matches else True
-        passed = all_keywords_found
-
-        return EvalResult(
-            case_id=case.id,
-            passed=passed,
-            actual_output=content,
-            expected_matches=expected_matches,
-            tool_calls_made=tool_calls_made,
-            duration_ms=duration_ms,
-        )
-    except Exception as e:
-        duration_ms = (time.monotonic() - start) * 1000
-        logger.error("Eval case %s failed: %s", case.id, e)
+    if capture.error and not capture.timed_out:
+        logger.error("Eval case %s failed: %s", case.id, capture.error)
         return EvalResult(
             case_id=case.id,
             passed=False,
-            actual_output="",
+            actual_output=capture.text,
             expected_matches={kw: False for kw in case.expected_output_contains},
-            tool_calls_made=[],
-            duration_ms=duration_ms,
-            error=str(e),
+            tool_calls_made=capture.tool_names,
+            duration_ms=capture.total_ms,
+            tool_assertion_passed=False,
+            timeout_triggered=False,
+            first_token_seen=capture.first_token_ms is not None,
+            error=capture.error,
         )
+
+    output_lower = capture.text.lower()
+    expected_matches = {
+        kw: kw.lower() in output_lower
+        for kw in case.expected_output_contains
+    }
+
+    # tool call assertion: 모든 expected_tool_calls가 실제 tool_names에 존재하는지
+    tool_assertion_passed = all(
+        t in capture.tool_names for t in case.expected_tool_calls
+    ) if case.expected_tool_calls else True
+
+    all_keywords_found = all(expected_matches.values()) if expected_matches else True
+    passed = all_keywords_found and tool_assertion_passed and not capture.timed_out
+
+    return EvalResult(
+        case_id=case.id,
+        passed=passed,
+        actual_output=capture.text,
+        expected_matches=expected_matches,
+        tool_calls_made=capture.tool_names,
+        duration_ms=capture.total_ms,
+        tool_assertion_passed=tool_assertion_passed,
+        timeout_triggered=capture.timed_out,
+        first_token_seen=capture.first_token_ms is not None,
+        error=capture.error,
+    )
 
 
 async def run_eval_suite(
@@ -139,8 +153,8 @@ def generate_eval_report(results: list[EvalResult]) -> str:
         "",
         f"**Total**: {total} | **Passed**: {passed} | **Failed**: {failed}",
         "",
-        "| Case ID | Passed | Duration | Keywords | Error |",
-        "|---------|--------|----------|----------|-------|",
+        "| Case ID | Passed | Duration | Keywords | Tools OK | Timeout | TTFT | Error |",
+        "|---------|--------|----------|----------|----------|---------|------|-------|",
     ]
 
     for r in results:
@@ -150,7 +164,10 @@ def generate_eval_report(results: list[EvalResult]) -> str:
         err = r.error[:50] if r.error else "-"
         lines.append(
             f"| {r.case_id} | {'Y' if r.passed else 'N'} "
-            f"| {r.duration_ms:.0f}ms | {kw_summary or '-'} | {err} |"
+            f"| {r.duration_ms:.0f}ms | {kw_summary or '-'} "
+            f"| {'Y' if r.tool_assertion_passed else 'N'} "
+            f"| {'Y' if r.timeout_triggered else 'N'} "
+            f"| {'Y' if r.first_token_seen else 'N'} | {err} |"
         )
 
     lines.append("")

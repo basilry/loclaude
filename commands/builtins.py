@@ -89,6 +89,18 @@ def register(
             lines.append(f"Model:     {getattr(runtime.engine, 'model', 'unknown')}")
             if getattr(runtime.engine, "base_url", None):
                 lines.append(f"Endpoint:  {runtime.engine.base_url}")
+            # Tool group metadata
+            tools = getattr(runtime, "tools", None)
+            if tools:
+                groups = tools.list_groups()
+                if groups:
+                    names = ", ".join(f"{g.name}({len(g.tool_names)})" for g in groups)
+                    lines.append(f"Groups:    {names} (registered, metadata only)")
+            # Active plan
+            if getattr(runtime, "plan", None):
+                from core.planner import get_snapshot
+                snap = get_snapshot(runtime.plan)
+                lines.append(f"Plan:      {runtime.plan.title} [{snap.progress}]")
         else:
             lines.append("Runtime:   unavailable")
 
@@ -135,6 +147,12 @@ def register(
             base_url = getattr(engine, "base_url", None)
             if base_url:
                 lines.append(f"[INFO] Endpoint: {base_url}")
+
+        if runtime:
+            groups = runtime.tools.list_groups()
+            for g in groups:
+                loaded = [n for n in g.tool_names if runtime.tools.get(n)]
+                lines.append(f"[INFO] Group '{g.name}': {len(loaded)}/{len(g.tool_names)} tools registered (metadata only)")
 
         lines.append(report.summary)
         return "\n".join(lines)
@@ -865,7 +883,7 @@ def register(
                     result = asyncio.run(
                         runtime.engine.chat(msgs, temperature=0.3, max_tokens=512)
                     )
-                llm_content = result[0]  # content from (content, thinking, tool_calls, usage)
+                llm_content = result[0]  # content from (content, usage)
                 # Extract JSON from response
                 json_match = re.search(r'\{[^}]+\}', llm_content, re.DOTALL)
                 if json_match:

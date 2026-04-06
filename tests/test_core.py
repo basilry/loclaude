@@ -183,10 +183,16 @@ def test_status_and_doctor_commands():
         async def ping(self):
             return {"version": "stub", "models": 1}
 
+    class StubTools:
+        def list_groups(self):
+            return []
+
     class StubRuntime:
         def __init__(self):
             self.engine = StubEngine()
             self.project_config = None
+            self.tools = StubTools()
+            self.plan = None
 
     original_file = builtins_mod.__file__
     try:
@@ -218,6 +224,50 @@ def test_status_and_doctor_commands():
             assert "[OK] Engine ping" in doctor
     finally:
         builtins_mod.__file__ = original_file
+
+
+def test_compact_with_engine():
+    """compact() correctly unpacks (content, usage) from engine.chat()."""
+    from core.session import Session
+    from core.types import Message, Role, TokenUsage
+
+    class FakeEngine:
+        async def chat(self, messages, *, system=None, temperature=0.7, max_tokens=4096):
+            return "Summary of conversation", TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
+
+    with tempfile.TemporaryDirectory() as td:
+        s = Session(session_dir=Path(td))
+        s.add(Message(role=Role.SYSTEM, content="system"))
+        for i in range(30):
+            s.add(Message(role=Role.USER, content=f"msg-{i}"))
+            s.add(Message(role=Role.ASSISTANT, content=f"reply-{i}"))
+
+        result = asyncio.run(s.compact(keep_last=5, engine=FakeEngine()))
+        assert "Compacted" in result
+        assert "LLM summary" in result
+        # Summary message should exist
+        summaries = [m for m in s.messages if "이전 대화 요약" in m.content]
+        assert len(summaries) == 1
+    print("  compact_with_engine")
+
+
+def test_auto_title():
+    """auto_title() correctly unpacks (content, usage) from engine.chat()."""
+    from core.session import Session, auto_title
+    from core.types import Message, Role, TokenUsage
+
+    class FakeEngine:
+        async def chat(self, messages, *, system=None, temperature=0.7, max_tokens=4096):
+            return "Test Title", TokenUsage(prompt_tokens=5, completion_tokens=2, total_tokens=7)
+
+    with tempfile.TemporaryDirectory() as td:
+        s = Session(session_dir=Path(td))
+        s.add(Message(role=Role.USER, content="Tell me about Python"))
+        s.add(Message(role=Role.ASSISTANT, content="Python is..."))
+
+        asyncio.run(auto_title(s, FakeEngine()))
+        assert s.title == "Test Title"
+    print("  auto_title")
 
 
 def test_config_loader():
@@ -351,6 +401,8 @@ if __name__ == "__main__":
     test_engine_parsing()
     test_skills_registration()
     test_commands()
+    test_compact_with_engine()
+    test_auto_title()
     test_config_loader()
     test_config_frontmatter_parser()
     print("\n✅ All tests passed!")

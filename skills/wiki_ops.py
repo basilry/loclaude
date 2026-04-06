@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import re
 from pathlib import Path
 
 from core.memory.factory import create_memory_backend
 from core.tool_registry import ToolRegistry
 from core.types import PermissionMode
-from core.wiki_service import (
-    append_wiki_log,
-    ensure_wiki_structure,
-    update_wiki_index,
-)
+from core.wiki_service import ensure_wiki_structure, upsert_wiki_document
 
 
 def _get_wiki_dir() -> Path:
@@ -56,31 +50,15 @@ def register(registry: ToolRegistry, workspace: str = ".") -> None:
         wiki_dir = _get_wiki_dir()
         ensure_wiki_structure({"wiki_dir": wiki_dir})
 
-        section = section.lower()
-        valid_sections = ("concepts", "guides", "references", "queries")
-        if section not in valid_sections:
-            section = "references"
-
-        slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-        rel_path = f"{section}/{slug}.md"
-        abs_path = wiki_dir / rel_path
-
-        abs_path.parent.mkdir(parents=True, exist_ok=True)
-
-        action = "update" if abs_path.exists() else "create"
-
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-        frontmatter = f"---\ntitle: {title}\ntags: {json.dumps(tag_list)}\n---\n\n"
-        abs_path.write_text(frontmatter + content, encoding="utf-8")
-
-        section_cap = section.capitalize()
-        update_wiki_index(wiki_dir, section_cap, title, rel_path)
-        append_wiki_log(wiki_dir, action, rel_path, f"{title} ({section})")
-
-        backend = create_memory_backend(wiki_dir=wiki_dir)
-        await backend.put(rel_path, title, content, tag_list or None)
-
-        return {"output": f"Wiki '{title}' saved to {rel_path}"}
+        result = await upsert_wiki_document(
+            wiki_dir,
+            title=title,
+            content=content,
+            section=section,
+            tags=tag_list,
+        )
+        return {"output": f"Wiki '{title}' saved to {result['path']}"}
 
     @registry.tool(
         name="wiki_search",

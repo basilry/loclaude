@@ -40,6 +40,24 @@
       "expected_output_contains": ["retry", "exception"],
       "max_turns": 1,
       "timeout_sec": 30.0
+    },
+    {
+      "id": "eval-006",
+      "name": "tool_call_read_file",
+      "prompt": "Read the file at /tmp/test.txt and show me its contents.",
+      "expected_output_contains": [],
+      "expected_tool_calls": ["read_file"],
+      "max_turns": 1,
+      "timeout_sec": 30.0
+    },
+    {
+      "id": "eval-007",
+      "name": "timeout_short",
+      "prompt": "Write a 5000-word essay on the history of computing from the 1940s to present day, covering every major milestone in detail.",
+      "expected_output_contains": [],
+      "expected_tool_calls": [],
+      "max_turns": 1,
+      "timeout_sec": 0.001
     }
   ]
 }

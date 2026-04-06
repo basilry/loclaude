@@ -6,6 +6,7 @@ import json
 import shutil
 from pathlib import Path
 
+from core.project_paths import get_project_paths
 from core.tasks import Plan
 
 
@@ -17,6 +18,12 @@ class TaskStore:
         self._dir.mkdir(parents=True, exist_ok=True)
         self._history_dir = self._dir / "history"
         self._history_dir.mkdir(exist_ok=True)
+
+    @classmethod
+    def for_workspace(cls, workspace: str | Path) -> TaskStore:
+        """workspace 경로 기반으로 TaskStore 생성."""
+        paths = get_project_paths(workspace)
+        return cls(paths.config_dir)
 
     @property
     def current_path(self) -> Path:

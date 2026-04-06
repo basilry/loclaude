@@ -79,18 +79,20 @@ def _write_markdown(
         lines.append(f"## {label}")
         lines.append("")
         lines.append(
-            "| Case | Success | TTFT (ms) | Total (ms) | tok/s | Tokens | Tool OK |"
+            "| Case | Success | TTFT (ms) | Total (ms) | tok/s | Tokens | Tool OK | TTFT OK | Timeout |"
         )
         lines.append(
-            "|------|---------|-----------|------------|-------|--------|---------|"
+            "|------|---------|-----------|------------|-------|--------|---------|---------|---------|"
         )
         for r in results:
             status = "PASS" if r.success else "FAIL"
             tool = "Y" if r.tool_call_parsed else "N"
+            ttft_ok = "Y" if r.first_token_seen else "N"
+            tout = "Y" if r.timed_out else "N"
             lines.append(
                 f"| {r.case_id} | {status} | {r.ttft_ms:.0f} | "
                 f"{r.total_latency_ms:.0f} | {r.tok_per_sec:.1f} | "
-                f"{r.tokens_generated} | {tool} |"
+                f"{r.tokens_generated} | {tool} | {ttft_ok} | {tout} |"
             )
         if results:
             avg_ttft = sum(r.ttft_ms for r in results) / len(results)

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 
@@ -82,3 +84,44 @@ def parse_wiki_document(path: Path) -> WikiDocument:
         content=content,
         sections=sections,
     )
+
+
+def render_frontmatter(frontmatter: WikiFrontmatter) -> str:
+    """Render WikiFrontmatter as a YAML frontmatter string with --- delimiters."""
+    lines = ["---"]
+    lines.append(f"title: {frontmatter.title}")
+    lines.append(f"type: {frontmatter.type}")
+    lines.append(f"tags: {json.dumps(frontmatter.tags)}")
+    if frontmatter.created:
+        lines.append(f"created: {frontmatter.created}")
+    if frontmatter.updated:
+        lines.append(f"updated: {frontmatter.updated}")
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def render_wiki_document(doc: WikiDocument) -> str:
+    """Render full canonical markdown: frontmatter + content."""
+    fm_str = render_frontmatter(doc.frontmatter)
+    return f"{fm_str}\n\n{doc.content}"
+
+
+def build_wiki_document(
+    path: Path,
+    *,
+    title: str,
+    doc_type: str,
+    tags: list[str],
+    content: str,
+) -> WikiDocument:
+    """Factory for creating WikiDocument with proper frontmatter."""
+    now = datetime.now().strftime("%Y-%m-%d")
+    fm = WikiFrontmatter(
+        title=title,
+        type=doc_type,
+        tags=tags,
+        created=now,
+        updated=now,
+    )
+    sections = re.findall(r"^#{1,3}\s+(.+)$", content, re.MULTILINE)
+    return WikiDocument(path=path, frontmatter=fm, content=content, sections=sections)

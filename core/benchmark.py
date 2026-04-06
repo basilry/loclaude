@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from core.engines.base import EngineProtocol
-from core.types import EventType, Message, Role, StreamEvent
+from core.stream_capture import collect_stream
+from core.types import Message, Role
 
 
 @dataclass
@@ -32,6 +32,8 @@ class BenchmarkResult:
     tok_per_sec: float
     tokens_generated: int
     tool_call_parsed: bool
+    first_token_seen: bool = False
+    timed_out: bool = False
     error: str | None = None
     timestamp: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
@@ -48,28 +50,14 @@ class BenchmarkResult:
             "tok_per_sec": round(self.tok_per_sec, 2),
             "tokens_generated": self.tokens_generated,
             "tool_call_parsed": self.tool_call_parsed,
+            "first_token_seen": self.first_token_seen,
+            "timed_out": self.timed_out,
             "error": self.error,
             "timestamp": self.timestamp,
         }
 
     def to_jsonl(self) -> str:
         return json.dumps(self.to_dict(), ensure_ascii=False)
-
-
-def _check_tool_call(events: list[StreamEvent], expected_tool: str | None) -> bool:
-    """tool_use 이벤트에서 expected_tool 매칭 확인."""
-    if expected_tool is None:
-        return True
-    for ev in events:
-        if ev.type == EventType.TOOL_USE and ev.data is not None:
-            if hasattr(ev.data, "name") and ev.data.name == expected_tool:
-                return True
-    return False
-
-
-def _check_keywords(text: str, keywords: list[str]) -> bool:
-    lower = text.lower()
-    return all(kw.lower() in lower for kw in keywords)
 
 
 def _count_tokens_approx(text: str) -> int:
@@ -82,52 +70,48 @@ def _count_tokens_approx(text: str) -> int:
 async def run_benchmark_case(
     engine: EngineProtocol, case: BenchmarkCase
 ) -> BenchmarkResult:
-    """단일 벤치마크 케이스 실행. chat_stream으로 TTFT/latency/tok_per_sec 측정."""
+    """단일 벤치마크 케이스 실행. collect_stream으로 TTFT/latency/tok_per_sec 측정."""
     messages = [Message(role=Role.USER, content=case.prompt)]
-    collected_events: list[StreamEvent] = []
-    collected_text = ""
-    ttft_ms = 0.0
-    first_token_received = False
 
-    t_start = time.perf_counter()
+    capture = await collect_stream(
+        engine,
+        messages,
+        temperature=0.3,
+        max_tokens=2048,
+        timeout_sec=case.timeout_sec,
+    )
 
-    try:
-        async for event in engine.chat_stream(messages, temperature=0.3, max_tokens=2048):
-            collected_events.append(event)
+    first_token_seen = capture.first_token_ms is not None
+    ttft_ms = capture.first_token_ms or 0.0
 
-            if event.type == EventType.TEXT_DELTA and not first_token_received:
-                ttft_ms = (time.perf_counter() - t_start) * 1000
-                first_token_received = True
-
-            if event.type == EventType.TEXT_DELTA and isinstance(event.data, str):
-                collected_text += event.data
-
-            if event.type == EventType.ERROR:
-                raise RuntimeError(event.data)
-
-    except Exception as exc:
-        total_ms = (time.perf_counter() - t_start) * 1000
+    if capture.error and not capture.timed_out:
         return BenchmarkResult(
             case_id=case.id,
             provider=engine.provider_name,
             model=engine.model,
             success=False,
             ttft_ms=ttft_ms,
-            total_latency_ms=total_ms,
+            total_latency_ms=capture.total_ms,
             tok_per_sec=0.0,
             tokens_generated=0,
             tool_call_parsed=False,
-            error=str(exc),
+            first_token_seen=first_token_seen,
+            timed_out=False,
+            error=capture.error,
         )
 
-    total_ms = (time.perf_counter() - t_start) * 1000
-    tokens_generated = _count_tokens_approx(collected_text)
-    elapsed_sec = total_ms / 1000
+    tokens_generated = _count_tokens_approx(capture.text)
+    elapsed_sec = capture.total_ms / 1000
     tok_per_sec = tokens_generated / elapsed_sec if elapsed_sec > 0 else 0.0
 
-    tool_ok = _check_tool_call(collected_events, case.expected_tool)
-    keywords_ok = _check_keywords(collected_text, case.expected_keywords)
-    success = tool_ok and keywords_ok
+    tool_ok = (
+        case.expected_tool in capture.tool_names
+        if case.expected_tool else True
+    )
+    keywords_ok = all(
+        kw.lower() in capture.text.lower() for kw in case.expected_keywords
+    )
+    success = tool_ok and keywords_ok and not capture.timed_out
 
     return BenchmarkResult(
         case_id=case.id,
@@ -135,10 +119,12 @@ async def run_benchmark_case(
         model=engine.model,
         success=success,
         ttft_ms=ttft_ms,
-        total_latency_ms=total_ms,
+        total_latency_ms=capture.total_ms,
         tok_per_sec=tok_per_sec,
         tokens_generated=tokens_generated,
         tool_call_parsed=tool_ok,
+        first_token_seen=first_token_seen,
+        timed_out=capture.timed_out,
     )
 
 

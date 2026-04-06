@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from commands import CommandRegistry
 from core.planner import (
     build_plan_from_prompt,
@@ -20,10 +18,19 @@ def register(
     registry: CommandRegistry,
     get_session=None,
     get_runtime=None,
+    store: TaskStore | None = None,
 ) -> None:
     """Task 관련 명령어 등록."""
 
-    store = TaskStore(Path(".local-claude"))
+    if store is None:
+        store = TaskStore.for_workspace(".")
+
+    def _sync_plan_to_runtime(plan):
+        """Save plan to store and sync to runtime if available."""
+        store.save_active_plan(plan)
+        runtime = get_runtime() if get_runtime else None
+        if runtime:
+            runtime.plan = plan
 
     @registry.command("plan", "Create a new plan from description")
     def cmd_plan(args: str = "", **ctx) -> str:
@@ -31,7 +38,7 @@ def register(
             return "Usage: /plan <description>\nProvide a numbered or bulleted list of tasks."
 
         plan = build_plan_from_prompt(args.strip())
-        store.save_active_plan(plan)
+        _sync_plan_to_runtime(plan)
 
         lines = [f"Plan created: {plan.title}", f"ID: {plan.id}", ""]
         for task in plan.tasks:
@@ -88,7 +95,7 @@ def register(
             return f"Task '{task_id}' not found in current plan."
 
         plan = update_task_status(plan, task_id, TaskStatus.COMPLETED)
-        store.save_active_plan(plan)
+        _sync_plan_to_runtime(plan)
 
         done_task = next(t for t in plan.tasks if t.id == task_id)
         snap = get_snapshot(plan)
@@ -102,6 +109,9 @@ def register(
             if all_done:
                 lines.append("All tasks completed!")
                 store.archive_plan(plan)
+                runtime = get_runtime() if get_runtime else None
+                if runtime:
+                    runtime.plan = None
                 lines.append("Plan archived.")
         return "\n".join(lines)
 
@@ -124,7 +134,7 @@ def register(
             return f"Task '{task_id}' not found."
 
         plan = update_task_status(plan, task_id, TaskStatus.IN_PROGRESS)
-        store.save_active_plan(plan)
+        _sync_plan_to_runtime(plan)
 
         task = next(t for t in plan.tasks if t.id == task_id)
         return f"Started: {task.title}"
